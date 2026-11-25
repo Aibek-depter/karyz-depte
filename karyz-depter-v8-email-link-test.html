@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Карыз Дептер</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; font-size: 17px; }
+        /* Крупные элементы управления для пользователей разного возраста */
+        button, input, a { -webkit-tap-highlight-color: transparent; }
+        button { min-height: 48px; font-size: 16px; font-weight: 600; }
+        input { min-height: 52px; font-size: 18px !important; }
+        label { font-size: 15px !important; font-weight: 600 !important; }
+        #debts-list { padding-bottom: 96px; }
+        .summary-card { border-radius: 18px; padding: 14px; min-width: 0; }
+        .summary-number { font-size: clamp(19px, 5vw, 25px); line-height: 1.25; font-weight: 800; overflow-wrap: anywhere; }
+        .large-action { min-height: 56px; border-radius: 15px; font-size: 17px; }
+        .tab-button { min-height: 56px; font-size: 17px; border-radius: 12px; }
+        @media (max-width: 360px) { body { font-size: 16px; } .summary-card { padding: 11px; } }
+    </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 antialiased select-none">
+
+    <div id="app" class="max-w-md mx-auto min-h-screen bg-white flex flex-col shadow-xl relative pb-20">
+        
+        <!-- СТРАНИЦА АВТОРИЗАЦИИ И ПОДПИСКИ -->
+        <div id="auth-screen" class="absolute inset-0 bg-white z-50 flex flex-col p-6 justify-between overflow-y-auto">
+            <div class="mt-4">
+                <div class="text-center mb-6">
+                    <div class="w-20 h-20 bg-emerald-600 rounded-2xl mx-auto flex items-center justify-center text-white text-3xl font-bold shadow-lg mb-3">
+                        KD
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800" data-i18n="app_title">Карыз Дептер</h1>
+                    <p class="text-gray-500 text-sm mt-1" data-i18n="app_subtitle">Учет долгов для магазинов</p>
+                    <p class="text-[10px] text-gray-400 mt-1">Облачный тест: вход по Email-ссылке. Позже подключим SMS.</p>
+                </div>
+
+                <!-- Блок входа / регистрации -->
+                <div class="bg-gray-50 p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                    <h2 class="font-semibold text-gray-700 text-base" data-i18n="auth_header">Регистрация / Вход</h2>
+                    <p class="text-xs text-gray-500" data-i18n="auth_hint">Новый email — регистрация. Зарегистрированный email — вход в свой магазин.</p>
+                    
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="store_name_label">Название магазина</label>
+                        <input type="text" id="auth-store-name" maxlength="100" placeholder="Напр: Магазин «Береке»" class="w-full px-4 py-3 text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <p class="text-[11px] text-gray-500 mt-1">Укажите при первой регистрации. При повторном входе можно оставить пустым.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Email для тестового входа</label>
+                        <input type="email" id="auth-email" autocomplete="email" placeholder="name@example.com" class="w-full px-4 py-3 text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                    </div>
+
+                    <button id="send-email-code-btn" onclick="sendEmailCode()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl text-lg shadow-md transition-all mt-2">Получить ссылку для входа</button>
+
+                    <div id="auth-code-section" class="hidden space-y-3 border-t border-gray-200 pt-4">
+                        <p id="auth-code-hint" class="text-sm text-gray-600">Откройте письмо на этом же устройстве и нажмите ссылку для входа.</p>
+                        <input type="text" id="auth-email-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="8-значный код" class="w-full px-4 py-3 text-center text-xl tracking-widest border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <button id="verify-email-code-btn" onclick="verifyEmailCode()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl text-lg shadow-md">Подтвердить код и войти</button>
+                        <button onclick="resetEmailCode()" class="w-full text-sm text-gray-600 py-2">Изменить email / запросить новый код</button>
+                    </div>
+                    <p id="auth-status" class="text-xs text-center text-gray-500" role="status" aria-live="polite"></p>
+                </div>
+                <div class="mt-4 space-y-2">
+                    <button onclick="document.getElementById('backup-file-input').click()" class="w-full bg-blue-50 text-blue-800 border border-blue-200 py-3 rounded-xl font-semibold">
+                        Импортировать резервную копию v3
+                    </button>
+                    <input id="backup-file-input" type="file" accept=".json,application/json" class="hidden" onchange="importBackupFile(event)">
+                    <p class="text-xs text-gray-500 text-center">Импорт добавит данные из копии, не удаляя существующие записи.</p>
+                </div>
+            </div>
+
+            <!-- Инфо о тарифе -->
+            <div class="mt-4 bg-blue-50 border border-blue-100 p-4 rounded-xl text-center">
+                <p class="text-xs text-blue-800 font-medium" data-i18n="trial_info">🎁 Бесплатный пробный период: <strong class="text-blue-900">10 дней</strong></p>
+                <p class="text-xs text-gray-500 mt-1" data-i18n="price_info">Далее подписка: 500 сом / месяц</p>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button onclick="toggleLang()" class="text-sm text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                    🌐 Язык / Тил: <span id="current-lang-label">РУС</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ОКНО ОПЛАТЫ ПОДПИСКИ -->
+        <div id="paywall-screen" class="hidden absolute inset-0 bg-white z-50 flex flex-col p-6 justify-between">
+            <div class="mt-10 text-center">
+                <div class="w-16 h-16 bg-amber-500 rounded-full mx-auto flex items-center justify-center text-white text-2xl font-bold mb-4 shadow-md">
+                    ⚠️
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800" data-i18n="paywall_title">Период подписки истек</h2>
+                <p class="text-gray-600 text-sm mt-2" data-i18n="paywall_desc">Для продолжения работы магазинов оплатите подписку 500 сом в месяц.</p>
+                
+                <div class="mt-6 bg-gray-50 p-4 rounded-xl border text-left space-y-2 text-sm">
+                    <p class="font-semibold text-gray-700" data-i18n="pay_requisites">Реквизиты для оплаты (Элсом / MBank):</p>
+                    <p class="text-emerald-700 font-mono font-bold text-base">📞 +996 555 123 456</p>
+                    <p class="text-xs text-gray-500" data-i18n="pay_note">После оплаты отправьте чек на этот номер или нажмите кнопку ниже для активации администратором.</p>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <button onclick="alert('Заявка на продление отправлена! Администратор свяжется с вами.');" class="w-full bg-emerald-600 text-white font-semibold py-3.5 rounded-xl shadow">
+                    💬 <span data-i18n="send_receipt">Отправить чек в WhatsApp</span>
+                </button>
+                <button onclick="logout()" class="w-full bg-gray-200 text-gray-700 font-medium py-3 rounded-xl text-sm">
+                    <span data-i18n="logout_btn">Выйти из аккаунта</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ОСНОВНОЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ -->
+        <!-- Шапка -->
+        <header class="bg-emerald-600 text-white px-4 py-3 sticky top-0 z-20 shadow-md flex justify-between items-center">
+            <div>
+                <h1 class="font-bold text-lg leading-tight" id="header-store-name">Название магазина</h1>
+                <p class="text-xs text-emerald-100" id="store-phone-display">+996 XXX XXX XXX</p>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="toggleLang()" class="bg-emerald-700 text-xs font-semibold px-2 py-1 rounded border border-emerald-500" id="lang-btn">KG</button>
+                <button onclick="logout()" class="bg-emerald-700 hover:bg-emerald-800 text-xs px-2 py-1 rounded" data-i18n="exit">Выход</button>
+            </div>
+        </header>
+
+        <!-- Статус подписки -->
+        <div class="bg-blue-50 border-b border-blue-200 px-4 py-2 text-center text-xs text-blue-800">
+            <span id="sub-status-text">ТЕСТОВЫЙ РЕЖИМ: оплата и блокировка отключены</span>
+        </div>
+
+        <!-- Сводка по двум категориям долгов -->
+        <section class="p-3 bg-slate-50 border-b border-slate-200" aria-label="Сводка долгов">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="summary-card bg-emerald-50 border border-emerald-200">
+                    <p id="summary-owed-label" class="text-xs font-bold text-emerald-800">Мне должны</p>
+                    <p class="summary-number text-emerald-800 mt-1" id="summary-owed">0 сом</p>
+                </div>
+                <div class="summary-card bg-amber-50 border border-amber-200">
+                    <p id="summary-iowe-label" class="text-xs font-bold text-amber-800">Я должен</p>
+                    <p class="summary-number text-amber-800 mt-1" id="summary-iowe">0 сом</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Переключатель категорий: Мне должны / Я должен -->
+        <div class="grid grid-cols-2 bg-slate-100 p-2 gap-2 text-center font-semibold">
+            <button id="tab-theymust" onclick="switchTab('theymust')" class="tab-button bg-white text-emerald-800 shadow-sm border-2 border-emerald-500 transition-all" data-i18n="tab_theymust">Мне должны</button>
+            <button id="tab-imust" onclick="switchTab('imust')" class="tab-button bg-amber-50 text-amber-800 border-2 border-transparent transition-all" data-i18n="tab_imust">Я должен</button>
+        </div>
+
+        <!-- Строка поиска -->
+        <div class="p-3 bg-white border-b">
+            <input type="text" id="search-input" oninput="renderDebts()" placeholder="🔍 Поиск по имени или номеру..." class="w-full px-4 py-3 bg-white border-2 border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <button id="archive-toggle" onclick="toggleArchived()" class="mt-2 w-full py-2 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700">Архив клиентов</button>
+            <button onclick="exportBackup()" class="mt-2 w-full py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 text-sm font-semibold">Скачать резервную копию</button>
+            <button onclick="document.getElementById('backup-file-input').click()" class="mt-2 w-full py-2 rounded-xl border border-blue-200 text-blue-800 text-sm font-semibold">Импортировать резервную копию</button>
+        </div>
+
+        <!-- Список должников -->
+        <main class="flex-1 p-3 overflow-y-auto space-y-3" id="debts-list">
+            <!-- Динамически заполняется JS -->
+        </main>
+
+        <!-- Кнопка добавления -->
+        <div class="fixed bottom-4 right-4 left-4 z-30 flex justify-end pointer-events-none">
+            <button onclick="openAddModal()" aria-label="Добавить долг" class="large-action pointer-events-auto px-6 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95">
+                <span class="text-2xl leading-none">＋</span><span id="add-main-label">Добавить долг</span>
+            </button>
+        </div>
+
+        <!-- Модальное окно: Добавление долга -->
+        <div id="add-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+                <h3 class="text-lg font-bold text-gray-800" id="modal-title" data-i18n="modal_add_title">Новый долг</h3>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="client_name">Имя клиента / поставщика</label>
+                    <input type="text" id="client-name" placeholder="Напр: Алмаз аке" class="w-full px-3 py-2.5 border rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="client_phone">Номер телефона</label>
+                    <input type="tel" id="client-phone" placeholder="0555 123 456" class="w-full px-3 py-2.5 border rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="debt_sum">Сумма долга (сом)</label>
+                    <input type="number" id="debt-amount" placeholder="0" class="w-full px-3 py-2.5 border rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="debt_note">Примечание (товар)</label>
+                    <input type="text" id="debt-note" placeholder="Напр: Мука 2 мешка, сахар" class="w-full px-3 py-2.5 border rounded-xl text-base focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button onclick="closeAddModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-medium" data-i18n="cancel">Отмена</button>
+                    <button onclick="saveDebt()" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold shadow" data-i18n="save">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно: Детали долга / Оплата / История -->
+        <div id="detail-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800" id="detail-name">Имя</h3>
+                        <p class="text-sm text-gray-500" id="detail-phone">+996...</p>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button onclick="openEditClientModal()" class="p-2 text-gray-600 hover:text-emerald-600 bg-gray-100 rounded-lg">✏️</button>
+                        <button onclick="closeDetailModal()" class="p-2 text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-50 p-4 rounded-xl text-center border border-emerald-100">
+                    <p class="text-xs text-emerald-700 font-medium" data-i18n="current_debt">Текущий долг:</p>
+                    <p class="text-3xl font-black text-emerald-800 mt-1"><span id="detail-amount">0</span> <span class="text-sm">сом</span></p>
+                </div>
+
+                <!-- Внесение возврата / добавление -->
+                <div id="transaction-controls" class="space-y-2">
+                    <label class="block text-xs font-medium text-gray-600" data-i18n="add_pay_label">Внести сумму (возврат или новый долг):</label>
+                    <div class="flex space-x-2">
+                        <input type="number" id="transaction-amount" placeholder="Сумма сом" class="flex-1 px-3 py-2 border rounded-xl text-base">
+                        <button onclick="makeTransaction('sub')" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow" data-i18n="btn_pay">Вернул(-а)</button>
+                        <button onclick="makeTransaction('add')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow" data-i18n="btn_plus">В долг</button>
+                    </div>
+                </div>
+
+                <!-- Кнопка WhatsApp напоминания -->
+                <button onclick="sendWhatsApp()" class="w-full bg-[#25D366] hover:bg-[#20ba5a] text-white py-3 rounded-xl font-semibold flex items-center justify-center space-x-2 shadow">
+                    <span>💬</span>
+                    <span data-i18n="whatsapp_btn">Напомнить в WhatsApp</span>
+                </button>
+
+                <!-- Кнопка позвонить -->
+                <a id="call-link" href="#" class="block text-center bg-gray-100 hover:bg-gray-200 text-gray-800 py-2.5 rounded-xl text-sm font-medium" data-i18n="call_btn">📞 Позвонить клиенту</a>
+
+                <!-- История транзакций -->
+                <div>
+                    <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2" data-i18n="history_title">История операций</h4>
+                    <div id="history-list" class="space-y-2 text-xs text-gray-600 max-h-36 overflow-y-auto">
+                        <!-- История -->
+                    </div>
+                </div>
+
+                <button id="archive-client-btn" onclick="archiveClient()" class="w-full text-red-700 bg-red-50 hover:bg-red-100 py-2 rounded-xl text-xs font-medium mt-2">В архив</button>
+            </div>
+        </div>
+
+        <!-- Модальное окно: Редактирование клиента -->
+        <div id="edit-client-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+                <h3 class="text-lg font-bold text-gray-800" data-i18n="edit_client_title">Редактировать данные</h3>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="client_name">Имя клиента</label>
+                    <input type="text" id="edit-client-name" class="w-full px-3 py-2.5 border rounded-xl text-base">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1" data-i18n="client_phone">Номер телефона</label>
+                    <input type="tel" id="edit-client-phone" class="w-full px-3 py-2.5 border rounded-xl text-base">
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button onclick="closeEditClientModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-medium" data-i18n="cancel">Отмена</button>
+                    <button onclick="saveEditedClient()" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold shadow" data-i18n="save">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PWA Подсказка установки -->
+        <div id="pwa-banner" class="hidden absolute bottom-2 left-3 right-3 bg-gray-900 text-white p-3 rounded-2xl shadow-2xl flex items-center justify-between text-xs z-40">
+            <div>
+                <p class="font-bold" data-i18n="pwa_title">Установить «Карыз Дептер»</p>
+                <p class="text-gray-300 text-[10px]" data-i18n="pwa_desc">Добавьте на главный экран для быстрого доступа</p>
+            </div>
+            <button onclick="dismissPwa()" class="bg-emerald-600 px-3 py-1.5 rounded-lg font-semibold" data-i18n="pwa_btn">ОК</button>
+        </div>
+
+    </div>
+
+    <!-- СКРИПТЫ ЛОГИКИ И ПЕРЕВОДОВ -->
+<script>
+    window.supabaseClient = window.supabase.createClient(
+        'https://hzlvyvlwxaipvdgqhzjw.supabase.co',
+        'sb_publishable_oWZH3_rCs63wssJUFLlbBg_rfU5dZl8'
+    );
+</script>    
+<script>
+        const translations = {
+            ru: {
+                app_title: "Карыз Дептер",
+                app_subtitle: "Учет долгов для магазинов",
+                auth_header: "Регистрация / Вход",
+                auth_hint: "Новый email — регистрация. Зарегистрированный email — вход в свой магазин.",
+                store_name_label: "Название магазина",
+                phone_label: "Номер телефона",
+                pin_label: "PIN-код (4 цифры)",
+                login_btn: "Зарегистрироваться / войти",
+                trial_info: "🧪 Тестовый режим: все функции доступны бесплатно",
+                price_info: "Оплата и блокировка будут подключены после тестирования",
+                paywall_title: "Период подписки истек",
+                paywall_desc: "Для продолжения работы магазинов оплатите подписку 500 сом в месяц.",
+                pay_requisites: "Реквизиты для оплаты (Элсом / MBank):",
+                pay_note: "После оплаты отправьте чек на этот номер или нажмите кнопку ниже для активации администратором.",
+                send_receipt: "Отправить чек в WhatsApp",
+                logout_btn: "Выйти из аккаунта",
+                exit: "Выход",
+                test_paywall: "Тест оплаты",
+                tab_theymust: "Мне должны",
+                tab_imust: "Я должен",
+                modal_add_title: "Новый долг",
+                client_name: "Имя клиента / поставщика",
+                client_phone: "Номер телефона",
+                debt_sum: "Сумма долга (сом)",
+                debt_note: "Примечание (товар)",
+                cancel: "Отмена",
+                save: "Сохранить",
+                current_debt: "Текущий долг:",
+                add_pay_label: "Внести сумму (возврат или новый долг):",
+                btn_pay: "Вернул(-а)",
+                btn_plus: "В долг",
+                whatsapp_btn: "Напомнить в WhatsApp",
+                call_btn: "📞 Позвонить клиенту",
+                history_title: "История операций",
+                delete_client: "Удалить клиента",
+                edit_client_title: "Редактировать данные",
+                pwa_title: "Установить «Карыз Дептер»",
+                pwa_desc: "Добавьте на главный экран для быстрого доступа",
+                pwa_btn: "ОК",
+                empty_list: "Список пуст. Нажмите '+' чтобы добавить."
+            },
+            kg: {
+                app_title: "Карыз Дептер",
+                app_subtitle: "Дүкөндөр үчүн карыз эсеби",
+                auth_header: "Катталуу / Кирүү",
+                auth_hint: "Жаңы номер — катталуу. Катталган номер — өз профилиңизге кирүү.",
+                store_name_label: "Дүкөндүн аты",
+                phone_label: "Телефон номери",
+                pin_label: "PIN-код (4 сан)",
+                login_btn: "Катталуу / кирүү",
+                trial_info: "🧪 Тест режими: бардык функциялар акысыз",
+                price_info: "Төлөм жана бөгөт коюу тесттен кийин кошулат",
+                paywall_title: "Жазылуу мөөнөтү бүтүп калды",
+                paywall_desc: "Дүкөндүн ишин улантуу үчүн айына 500 сом төлөм жасаңыз.",
+                pay_requisites: "Төлөм реквизиттери (Элсом / MBank):",
+                pay_note: "Төлөгөндөн кийин чек жөнөтүңүз же администраторго кайрылыңыз.",
+                send_receipt: "WhatsApp чекти жөнөтүү",
+                logout_btn: "Аккаунттан чыгуу",
+                exit: "Чыгуу",
+                test_paywall: "Төлөмдү текшерүү",
+                tab_theymust: "Мага карыз",
+                tab_imust: "Мен карызмын",
+                modal_add_title: "Жаңы карыз",
+                client_name: "Кардардын / жеткирүүчүнүн аты",
+                client_phone: "Телефон номери",
+                debt_sum: "Карыз суммасы (сом)",
+                debt_note: "Эскертүү (товар)",
+                cancel: "Жокко чыгаруу",
+                save: "Сактоо",
+                current_debt: "Учурдагы карыз:",
+                add_pay_label: "Сумма киргизүү (кайтаруу же кошуу):",
+                btn_pay: "Кайтарды",
+                btn_plus: "Карызга",
+                whatsapp_btn: "WhatsApp аркылуу эскертүү",
+                call_btn: "📞 Кардарга чалуу",
+                history_title: "Операциялар тарыхы",
+                delete_client: "Кардарды өчүрүү",
+                edit_client_title: "Маалыматты өзгөртүү",
+                pwa_title: "«Карыз Дептерди» орнотуу",
+                pwa_desc: "Телефон экранына кошуп алыңыз",
+                pwa_btn: "МАКУЛ",
+                empty_list: "Тизме бош. Кошуу үчүн '+' баскычын басыңыз."
+            }
+        };
+
+        let currentLang = localStorage.getItem('kd_lang') || 'ru';
+        // В V8 авторизация теперь выполняется Supabase Auth. Локальный PIN больше не используется.
+        let currentUser = null;
+        let currentStoreName = localStorage.getItem('kd_store_name');
+        let cloudStoreId = localStorage.getItem('kd_store_id') || null;
+        let cloudReady = false;
+        let pendingEmail = localStorage.getItem('kd_pending_email') || '';
+        let isSubActive = localStorage.getItem('kd_sub') === 'true';
+        let currentTab = 'theymust';
+        let selectedClientId = null;
+        let showArchived = false;
+        
+        // У каждого зарегистрированного магазина собственная база долгов.
+        let debtsData = [];
+        let accountsData = JSON.parse(localStorage.getItem('kd_accounts') || '[]');
+
+        // Приводим кыргызские номера к единому виду для сопоставления.
+        // При этом ключ уже существующего профиля не меняем без необходимости.
+        function normalizePhone(phone) {
+            let digits = String(phone || '').replace(/\D/g, '');
+            if (digits.startsWith('00996')) digits = digits.slice(2);
+            if (digits.startsWith('0') && digits.length === 10) digits = '996' + digits.slice(1);
+            else if (/^[5-7]\d{8}$/.test(digits)) digits = '996' + digits;
+            return digits;
+        }
+
+        function samePhone(a, b) {
+            return normalizePhone(a) === normalizePhone(b);
+        }
+
+        function debtsStorageKey(phone) {
+            return 'kd_debts_' + phone;
+        }
+
+        function loadCurrentDebts() {
+            if (!currentUser) { debtsData = []; return; }
+            try {
+                debtsData = JSON.parse(localStorage.getItem(debtsStorageKey(currentUser)) || '[]');
+                if (!Array.isArray(debtsData)) debtsData = [];
+            } catch (e) { debtsData = []; }
+        }
+
+        function saveCurrentDebts() {
+            if (currentUser) {
+                localStorage.setItem(debtsStorageKey(currentUser), JSON.stringify(debtsData));
+            }
+        }
+
+        function saveAccounts() {
+            localStorage.setItem('kd_accounts', JSON.stringify(accountsData));
+        }
+
+        function setAuthStatus(message, isError = false) {
+            const el = document.getElementById('auth-status');
+            if (el) {
+                el.textContent = message || '';
+                el.className = 'text-xs text-center ' + (isError ? 'text-red-600' : 'text-gray-500');
+            }
+        }
+
+        function resetEmailCode() {
+            pendingEmail = '';
+            localStorage.removeItem('kd_pending_email');
+            document.getElementById('auth-code-section').classList.add('hidden');
+            document.getElementById('auth-email-code').value = '';
+            document.getElementById('auth-email').disabled = false;
+            document.getElementById('send-email-code-btn').disabled = false;
+            setAuthStatus('');
+        }
+
+        async function sendEmailCode() {
+            const email = document.getElementById('auth-email').value.trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                setAuthStatus(currentLang === 'ru' ? 'Введите корректный email.' : 'Туура email дарегин киргизиңиз.', true);
+                return;
+            }
+            const btn = document.getElementById('send-email-code-btn');
+            btn.disabled = true;
+            setAuthStatus(currentLang === 'ru' ? 'Отправляем ссылку…' : 'Шилтеме жөнөтүлүүдө…');
+            try {
+                // Используем стандартное письмо Supabase со ссылкой Magic Link.
+                const redirectTo = window.location.origin + window.location.pathname;
+                const { error } = await window.supabaseClient.auth.signInWithOtp({
+                    email,
+                    options: { shouldCreateUser: true, emailRedirectTo: redirectTo }
+                });
+                if (error) throw error;
+                pendingEmail = email;
+                localStorage.setItem('kd_pending_email', email);
+                localStorage.setItem('kd_pending_store_name', document.getElementById('auth-store-name').value.trim());
+                document.getElementById('auth-email').disabled = true;
+                document.getElementById('auth-code-section').classList.remove('hidden');
+                document.getElementById('auth-email-code').classList.add('hidden');
+                document.getElementById('verify-email-code-btn').classList.add('hidden');
+                document.getElementById('auth-code-hint').textContent = currentLang === 'ru'
+                    ? 'Письмо со ссылкой отправлено на ' + email + '. Откройте письмо на этом же устройстве и нажмите «Sign in». Приложение откроется автоматически.'
+                    : email + ' дарегине кирүү шилтемеси жөнөтүлдү. Катты ушул түзмөктөн ачып, «Sign in» баскычын басыңыз.';
+                setAuthStatus(currentLang === 'ru' ? 'Ссылка отправлена. Проверьте входящие и папку «Спам».' : 'Шилтеме жөнөтүлдү. Кирүүчү каттарды жана «Спам» папкасын текшериңиз.');
+            } catch (error) {
+                setAuthStatus((currentLang === 'ru' ? 'Не удалось отправить ссылку: ' : 'Шилтеме жөнөтүлгөн жок: ') + (error.message || 'ошибка Supabase'), true);
+                btn.disabled = false;
+            }
+        }
+
+        async function verifyEmailCode() {
+            const token = document.getElementById('auth-email-code').value.trim();
+            const email = pendingEmail || localStorage.getItem('kd_pending_email');
+            if (!email || !/^\d{6,8}$/.test(token)) {
+                setAuthStatus(currentLang === 'ru' ? 'Введите код из письма (6–8 цифр).' : 'Каттагы кодду киргизиңиз (6–8 сан).', true);
+                return;
+            }
+            const btn = document.getElementById('verify-email-code-btn');
+            btn.disabled = true;
+            setAuthStatus(currentLang === 'ru' ? 'Проверяем код…' : 'Код текшерилүүдө…');
+            try {
+                const { data, error } = await window.supabaseClient.auth.verifyOtp({ email, token, type: 'email' });
+                if (error) throw error;
+                if (!data || !data.user) throw new Error('Supabase не вернул пользователя после подтверждения кода.');
+                pendingEmail = '';
+                localStorage.removeItem('kd_pending_email');
+                await activateCloudUser(data.user);
+            } catch (error) {
+                setAuthStatus((currentLang === 'ru' ? 'Код не принят: ' : 'Код кабыл алынган жок: ') + (error.message || 'ошибка проверки'), true);
+                btn.disabled = false;
+            }
+        }
+
+        async function activateCloudUser(user) {
+            currentUser = user.id;
+            localStorage.setItem('kd_user', currentUser);
+            const enteredStoreName = (localStorage.getItem('kd_pending_store_name') || document.getElementById('auth-store-name').value || '').trim();
+            let existingStore = null;
+            const { data: foundStore, error: selectError } = await window.supabaseClient
+                .from('stores').select('id,name').eq('owner_id', user.id).maybeSingle();
+            if (selectError) {
+                const cachedStoreId = localStorage.getItem('kd_store_id');
+                if (!cachedStoreId) throw selectError;
+                cloudStoreId = cachedStoreId;
+                currentStoreName = localStorage.getItem('kd_store_name') || 'Мой магазин';
+                cloudReady = false;
+                loadCurrentDebts();
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('header-store-name').innerText = currentStoreName;
+                document.getElementById('store-phone-display').innerText = user.email || '';
+                checkSubscription();
+                renderDebts();
+                updateCloudStatus(currentLang === 'ru' ? 'Офлайн-режим: данные пока на устройстве' : 'Офлайн режим: маалымат түзмөктө сакталды', true);
+                return;
+            }
+            existingStore = foundStore;
+            let store = existingStore;
+            if (!store) {
+                if (!enteredStoreName) {
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                    setAuthStatus(currentLang === 'ru' ? 'Введите название магазина и подтвердите email ещё раз.' : 'Дүкөндүн атын киргизип, email дарегин кайра ырастаңыз.', true);
+                    await window.supabaseClient.auth.signOut();
+                    currentUser = null;
+                    localStorage.removeItem('kd_user');
+                    return;
+                }
+                const { data: createdStore, error: insertError } = await window.supabaseClient
+                    .from('stores').insert({ owner_id: user.id, name: enteredStoreName }).select('id,name').single();
+                if (insertError) throw insertError;
+                store = createdStore;
+            }
+            cloudStoreId = store.id;
+            localStorage.setItem('kd_store_id', cloudStoreId);
+            currentStoreName = store.name;
+            localStorage.setItem('kd_store_name', currentStoreName);
+            localStorage.removeItem('kd_pending_store_name');
+            cloudReady = true;
+            let cloudLoadOk = true;
+            try {
+                await loadCloudDebts();
+            } catch (syncError) {
+                cloudReady = false;
+                cloudLoadOk = false;
+                loadCurrentDebts();
+                updateCloudStatus((currentLang === 'ru' ? 'Офлайн: локальные данные сохранены. Синхронизация повторится при подключении. ' : 'Офлайн: жергиликтүү маалымат сакталды. Интернет келгенде синхрондолот. ') + (syncError.message || ''), true);
+            }
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('header-store-name').innerText = currentStoreName;
+            document.getElementById('store-phone-display').innerText = user.email || '';
+            checkSubscription();
+            renderDebts();
+            if (cloudLoadOk) updateCloudStatus(currentLang === 'ru' ? 'Облако подключено' : 'Булутка туташты');
+        }
+
+        function ensureCloudRecordIds(client) {
+            const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+            if (!isUuid(client.id)) client.id = createRecordId();
+            if (!Array.isArray(client.history)) client.history = [];
+            client.history.forEach(entry => { if (!isUuid(entry.id)) entry.id = createRecordId(); });
+            return client;
+        }
+
+        function calculateClientBalance(client) {
+            const history = Array.isArray(client.history) ? client.history : [];
+            return history.reduce((sum, entry) => sum + (entry.kind === 'payment' ? -1 : 1) * (Number(entry.amount) || 0), 0);
+        }
+
+        async function loadCloudDebts() {
+            if (!cloudStoreId) return;
+            const [{ data: contacts, error: contactsError }, { data: entries, error: entriesError }] = await Promise.all([
+                window.supabaseClient.from('contacts').select('id,name,phone,contact_type,archived_at,created_at').eq('store_id', cloudStoreId),
+                window.supabaseClient.from('ledger_entries').select('id,contact_id,side,entry_type,amount,note,created_at').eq('store_id', cloudStoreId).order('created_at', { ascending: true })
+            ]);
+            if (contactsError) throw contactsError;
+            if (entriesError) throw entriesError;
+            const byContact = new Map();
+            (contacts || []).forEach(c => byContact.set(c.id, {
+                id: c.id, name: c.name, phone: c.phone || '',
+                type: c.contact_type === 'supplier' ? 'imust' : 'theymust',
+                amount: 0, history: [], archivedAt: c.archived_at || null
+            }));
+            (entries || []).forEach(e => {
+                const client = byContact.get(e.contact_id);
+                if (!client) return;
+                const createdAt = e.created_at || new Date().toISOString();
+                const kind = e.entry_type === 'payment' ? 'payment' : 'debt';
+                const amount = Number(e.amount) || 0;
+                const note = e.note || '';
+                client.history.push({
+                    id: e.id, kind, amount, createdAt,
+                    date: new Date(createdAt).toLocaleDateString(),
+                    text: note || (kind === 'payment' ? 'Платёж' : 'Долг'), note
+                });
+            });
+            byContact.forEach(client => { client.amount = calculateClientBalance(client); });
+            const remote = Array.from(byContact.values());
+            let local = [];
+            try {
+                const parsed = JSON.parse(localStorage.getItem(debtsStorageKey(currentUser)) || '[]');
+                if (Array.isArray(parsed)) local = parsed;
+            } catch (_) { local = []; }
+            const merged = new Map(remote.map(c => [String(c.id), c]));
+            for (const localClient of local) {
+                if (!localClient || typeof localClient !== 'object') continue;
+                ensureCloudRecordIds(localClient);
+                const id = String(localClient.id);
+                if (!merged.has(id)) merged.set(id, localClient);
+                else {
+                    const cloudClient = merged.get(id);
+                    const history = new Map((cloudClient.history || []).map(h => [String(h.id), h]));
+                    (localClient.history || []).forEach(h => { if (h && h.id && !history.has(String(h.id))) history.set(String(h.id), h); });
+                    cloudClient.history = Array.from(history.values()).sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+                    cloudClient.amount = calculateClientBalance(cloudClient);
+                }
+            }
+            debtsData = Array.from(merged.values());
+            saveCurrentDebts();
+            // Отправляем в облако только недостающие/локальные записи; ID операций сохраняются для защиты от дублей.
+            await syncAllLocalToCloud();
+        }
+
+        function updateCloudStatus(message, isError = false) {
+            const el = document.getElementById('sub-status-text');
+            if (el) {
+                el.textContent = message;
+                el.className = 'text-center text-xs px-4 py-2 ' + (isError ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800');
+            }
+        }
+
+        async function syncClientToCloud(client) {
+            if (!cloudReady || !cloudStoreId || !currentUser) return;
+            const contact = {
+                id: client.id, store_id: cloudStoreId, name: client.name,
+                phone: client.phone || null,
+                contact_type: client.type === 'imust' ? 'supplier' : 'customer',
+                archived_at: client.archivedAt || null
+            };
+            const { error: contactError } = await window.supabaseClient.from('contacts').upsert(contact, { onConflict: 'id' });
+            if (contactError) throw contactError;
+            const rows = (client.history || []).map(entry => ({
+                id: entry.id, store_id: cloudStoreId, contact_id: client.id,
+                side: client.type === 'imust' ? 'payable' : 'receivable',
+                entry_type: entry.kind === 'payment' ? 'payment' : 'debt',
+                amount: Number(entry.amount),
+                note: entry.text || entry.note || null,
+                created_at: entry.createdAt || new Date().toISOString()
+            }));
+            if (rows.length) {
+                // ledger_entries — журнал без UPDATE/DELETE. Сначала читаем уже записанные ID,
+                // затем добавляем только отсутствующие операции, чтобы повторная синхронизация не дублировала долг.
+                const { data: existingRows, error: existingError } = await window.supabaseClient
+                    .from('ledger_entries').select('id').eq('store_id', cloudStoreId).eq('contact_id', client.id);
+                if (existingError) throw existingError;
+                const existingIds = new Set((existingRows || []).map(row => String(row.id)));
+                const missingRows = rows.filter(row => !existingIds.has(String(row.id)));
+                if (missingRows.length) {
+                    const { error: insertEntriesError } = await window.supabaseClient.from('ledger_entries').insert(missingRows);
+                    if (insertEntriesError) throw insertEntriesError;
+                }
+            }
+        }
+
+        async function syncAllLocalToCloud() {
+            if (!cloudReady || !cloudStoreId) return;
+            try {
+                for (const client of debtsData) await syncClientToCloud(client);
+                updateCloudStatus(currentLang === 'ru' ? 'Облако синхронизировано' : 'Булут синхрондолду');
+            } catch (error) {
+                updateCloudStatus((currentLang === 'ru' ? 'Ошибка синхронизации: ' : 'Синхрондоо катасы: ') + (error.message || ''), true);
+                throw error;
+            }
+        }
+
+        async function initApp() {
+            updateTexts();
+            document.getElementById('auth-screen').classList.remove('hidden');
+            try {
+                const { data, error } = await window.supabaseClient.auth.getSession();
+                if (error) throw error;
+                if (data.session && data.session.user) await activateCloudUser(data.session.user);
+            } catch (error) {
+                updateCloudStatus((currentLang === 'ru' ? 'Нет соединения с облаком: ' : 'Булутка туташуу жок: ') + (error.message || ''), true);
+            }
+            renderDebts();
+        }
+
+        function toggleLang() {
+            currentLang = currentLang === 'ru' ? 'kg' : 'ru';
+            localStorage.setItem('kd_lang', currentLang);
+            updateTexts();
+            checkSubscription();
+            renderDebts();
+        }
+
+        function updateTexts() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[currentLang][key]) el.innerText = translations[currentLang][key];
+            });
+            document.getElementById('current-lang-label').innerText = currentLang.toUpperCase();
+            document.getElementById('lang-btn').innerText = currentLang === 'ru' ? 'KG' : 'РУС';
+            if (currentStoreName) document.getElementById('header-store-name').innerText = currentStoreName;
+        }
+
+        async function logout() {
+            cloudReady = false;
+            cloudStoreId = null;
+            try { await window.supabaseClient.auth.signOut(); } catch (_) {}
+            currentUser = null;
+            currentStoreName = null;
+            localStorage.removeItem('kd_user');
+            localStorage.removeItem('kd_store_name');
+            localStorage.removeItem('kd_store_id');
+            location.reload();
+        }
+
+        function checkSubscription() {
+            // Тестовый режим: доступ не зависит от оплаты или срока пробного периода.
+            document.getElementById('paywall-screen').classList.add('hidden');
+            document.getElementById('sub-status-text').innerText =
+                currentLang === 'ru'
+                    ? 'ТЕСТОВЫЙ РЕЖИМ: оплата и блокировка отключены'
+                    : 'ТЕСТ РЕЖИМИ: төлөм жана бөгөт коюу өчүрүлгөн';
+        }
+
+        function toggleTestPaywall() {
+            isSubActive = !isSubActive;
+            localStorage.setItem('kd_sub', isSubActive);
+            checkSubscription();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            const receivable = document.getElementById('tab-theymust');
+            const payable = document.getElementById('tab-imust');
+            if (tab === 'theymust') {
+                receivable.className = 'tab-button bg-white text-emerald-800 shadow-sm border-2 border-emerald-500 transition-all';
+                payable.className = 'tab-button bg-amber-50 text-amber-800 border-2 border-transparent transition-all';
+            } else {
+                payable.className = 'tab-button bg-white text-amber-800 shadow-sm border-2 border-amber-500 transition-all';
+                receivable.className = 'tab-button bg-emerald-50 text-emerald-800 border-2 border-transparent transition-all';
+            }
+            renderDebts();
+        }
+
+        function openAddModal() {
+            document.getElementById('client-name').value = '';
+            document.getElementById('client-phone').value = '';
+            document.getElementById('debt-amount').value = '';
+            document.getElementById('debt-note').value = '';
+            document.getElementById('add-modal').classList.remove('hidden');
+        }
+
+        function closeAddModal() {
+            document.getElementById('add-modal').classList.add('hidden');
+        }
+
+        // UUID для будущих облачных записей. Старые локальные ID не меняем.
+        function createRecordId() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+            if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+                const bytes = new Uint8Array(16);
+                window.crypto.getRandomValues(bytes);
+                bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                return [...bytes].map((b, i) => ([4, 6, 8, 10].includes(i) ? '-' : '') + b.toString(16).padStart(2, '0')).join('');
+            }
+            throw new Error('Браузер не поддерживает безопасную генерацию ID. Запись не создана.');
+        }
+
+        async function saveDebt() {
+            const name = document.getElementById('client-name').value.trim();
+            const phone = document.getElementById('client-phone').value.trim();
+            const amountRaw = document.getElementById('debt-amount').value;
+            const amount = Number(amountRaw);
+            const note = document.getElementById('debt-note').value.trim();
+
+            if (!name || amountRaw.trim() === '' || !Number.isFinite(amount) || amount <= 0) {
+                alert(currentLang === 'ru' ? 'Введите имя и сумму долга' : 'Атын жана карыз суммасын жазыңыз');
+                return;
+            }
+
+            let newId, historyId;
+            try {
+                newId = createRecordId();
+                historyId = createRecordId();
+            } catch (error) { alert(error.message); return; }
+            const now = new Date();
+            const newClient = {
+                id: newId,
+                name,
+                phone,
+                amount,
+                type: currentTab,
+                history: [
+                    {
+                        id: historyId,
+                        kind: 'debt',
+                        amount,
+                        createdAt: now.toISOString(),
+                        date: now.toLocaleDateString(),
+                        text: `${currentLang === 'ru' ? 'Взял в долг' : 'Карызга алды'}: ${amount} сом${note ? ` (${note})` : ''}`,
+                        note
+                    }
+                ]
+            };
+
+            debtsData.push(newClient);
+            saveCurrentDebts();
+            closeAddModal();
+            renderDebts();
+            try { await syncClientToCloud(newClient); }
+            catch (error) { updateCloudStatus('Сохранено на устройстве; ошибка облака: ' + (error.message || ''), true); }
+        }
+
+        function formatSom(value) {
+            return new Intl.NumberFormat(currentLang === 'ru' ? 'ru-RU' : 'ru-RU', { maximumFractionDigits: 0 }).format(value || 0) + ' сом';
+        }
+
+        function updateDebtSummary() {
+            const owedToMe = debtsData.filter(d => !d.archivedAt && d.type === 'theymust').reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+            const iOwe = debtsData.filter(d => !d.archivedAt && d.type === 'imust').reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+            const isRu = currentLang === 'ru';
+            document.getElementById('summary-owed-label').innerText = isRu ? 'Мне должны' : 'Мага карыз';
+            document.getElementById('summary-iowe-label').innerText = isRu ? 'Я должен' : 'Менин карызым';
+            document.getElementById('summary-owed').innerText = formatSom(owedToMe);
+            document.getElementById('summary-iowe').innerText = formatSom(iOwe);
+            document.getElementById('add-main-label').innerText = isRu ? 'Добавить долг' : 'Карыз кошуу';
+            document.querySelector('.fixed.bottom-4').style.display = showArchived ? 'none' : '';
+        }
+
+        function renderDebts() {
+            updateDebtSummary();
+            const listEl = document.getElementById('debts-list');
+            const search = document.getElementById('search-input').value.toLowerCase();
+            
+            const filtered = debtsData
+                .filter(d => (showArchived ? !!d.archivedAt : !d.archivedAt) && d.type === currentTab && (String(d.name || '').toLocaleLowerCase().includes(search) || String(d.phone || '').includes(search)))
+                .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru', { sensitivity: 'base' }));
+
+            document.getElementById('archive-toggle').innerText = showArchived
+                ? (currentLang === 'ru' ? '← К активным клиентам' : '← Активдүү кардарларга')
+                : (currentLang === 'ru' ? 'Архив клиентов' : 'Кардарлар архиви');
+            listEl.replaceChildren();
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-center py-12 text-gray-400 text-sm';
+                empty.textContent = showArchived
+                    ? (currentLang === 'ru' ? 'Архив пуст' : 'Архив бош')
+                    : translations[currentLang].empty_list;
+                listEl.appendChild(empty);
+                return;
+            }
+
+            // Пользовательские данные выводим только как текст, без вставки HTML-разметки.
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border-2 border-slate-200 p-4 rounded-2xl shadow-sm flex justify-between items-center active:bg-slate-50 cursor-pointer min-h-[82px]';
+                card.addEventListener('click', () => openDetail(item.id));
+
+                const info = document.createElement('div');
+                const name = document.createElement('h4');
+                name.className = 'font-bold text-slate-900 text-lg';
+                name.textContent = String(item.name || '');
+                const phone = document.createElement('p');
+                phone.className = 'text-sm text-slate-600 mt-1';
+                phone.textContent = String(item.phone || 'Нет телефона');
+                info.append(name, phone);
+
+                const balance = document.createElement('div');
+                balance.className = 'text-right';
+                const amount = document.createElement('span');
+                amount.className = `font-black text-xl ${item.type === 'theymust' ? 'text-emerald-700' : 'text-amber-700'}`;
+                amount.textContent = `${Number(item.amount) || 0} сом`;
+                balance.appendChild(amount);
+                card.append(info, balance);
+                listEl.appendChild(card);
+            });
+        }
+
+        function openDetail(id) {
+            selectedClientId = id;
+            const client = debtsData.find(d => d.id === id);
+            if (!client) return;
+
+            document.getElementById('detail-name').innerText = client.name;
+            document.getElementById('detail-phone').innerText = client.phone || '—';
+            document.getElementById('detail-amount').innerText = client.amount;
+            document.getElementById('transaction-amount').value = '';
+            document.getElementById('transaction-controls').style.display = client.archivedAt ? 'none' : '';
+            document.getElementById('archive-client-btn').innerText = client.archivedAt
+                ? (currentLang === 'ru' ? 'Восстановить клиента' : 'Кардарды калыбына келтирүү')
+                : (currentLang === 'ru' ? 'В архив' : 'Архивге жөнөтүү');
+            document.getElementById('archive-client-btn').className = client.archivedAt
+                ? 'w-full text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-xl text-xs font-medium mt-2'
+                : 'w-full text-red-700 bg-red-50 hover:bg-red-100 py-2 rounded-xl text-xs font-medium mt-2';
+            document.getElementById('call-link').href = `tel:${client.phone}`;
+
+            const historyEl = document.getElementById('history-list');
+            const safeHistory = Array.isArray(client.history) ? client.history : [];
+            historyEl.replaceChildren();
+            safeHistory.forEach(entry => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between border-b pb-1';
+                const label = document.createElement('span');
+                label.textContent = `${String(entry.date || '')}: ${String(entry.text || '')}`;
+                row.appendChild(label);
+                historyEl.appendChild(row);
+            });
+
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+        }
+
+        function makeTransaction(action) {
+            const client = debtsData.find(d => d.id === selectedClientId);
+            if (!client || client.archivedAt) return;
+            const raw = document.getElementById('transaction-amount').value;
+            const val = Number(raw);
+            if (raw.trim() === '' || !Number.isFinite(val) || val <= 0) {
+                alert(currentLang === 'ru' ? 'Введите корректную сумму больше нуля' : 'Нөлдөн чоң туура сумманы киргизиңиз');
+                return;
+            }
+
+            if (action !== 'sub' && action !== 'add') return;
+            const balance = Number(client.amount);
+            if (!Number.isFinite(balance) || balance < 0) {
+                alert(currentLang === 'ru' ? 'Ошибка текущего остатка. Операция отменена.' : 'Калдыкта ката бар. Операция жокко чыгарылды.');
+                return;
+            }
+            if (action === 'sub' && val > balance) {
+                alert(currentLang === 'ru'
+                    ? `Сумма возврата больше остатка долга. Сейчас долг: ${balance} сом. Операция не выполнена.`
+                    : `Кайтаруу суммасы карыздын калдыгынан көп. Учурдагы карыз: ${balance} сом. Операция аткарылган жок.`);
+                return;
+            }
+            if (!Array.isArray(client.history)) client.history = [];
+            const transactionDate = new Date();
+            const transaction = {
+                id: createRecordId(),
+                kind: action === 'sub' ? 'payment' : 'debt',
+                amount: val,
+                createdAt: transactionDate.toISOString(),
+                date: transactionDate.toLocaleDateString(),
+                text: action === 'sub'
+                    ? (currentLang === 'ru' ? `Возврат: -${val} сом` : `Кайтарды: -${val} сом`)
+                    : (currentLang === 'ru' ? `В долг: +${val} сом` : `Карызга: +${val} сом`)
+            };
+            client.amount = action === 'sub' ? balance - val : balance + val;
+            client.history.unshift(transaction);
+
+            saveCurrentDebts();
+            openDetail(selectedClientId);
+            renderDebts();
+            syncClientToCloud(client).catch(error => updateCloudStatus('Локально сохранено; ошибка облака: ' + (error.message || ''), true));
+        }
+
+        function toggleArchived() {
+            showArchived = !showArchived;
+            document.getElementById('search-input').value = '';
+            renderDebts();
+        }
+
+        function archiveClient() {
+            const client = debtsData.find(d => d.id === selectedClientId);
+            if (!client) return;
+            if (client.archivedAt) {
+                client.archivedAt = null;
+                client.restoredAt = new Date().toISOString();
+            } else {
+                if (!confirm(currentLang === 'ru'
+                    ? 'Переместить клиента в архив? Долг и вся история сохранятся.'
+                    : 'Кардарды архивге жөнөтөсүзбү? Карыз жана бардык тарых сакталат.')) return;
+                client.archivedAt = new Date().toISOString();
+            }
+            saveCurrentDebts();
+            closeDetailModal();
+            renderDebts();
+            syncClientToCloud(client).catch(error => updateCloudStatus('Локально сохранено; ошибка облака: ' + (error.message || ''), true));
+        }
+
+        function sendWhatsApp() {
+            const client = debtsData.find(d => d.id === selectedClientId);
+            if (!client || !client.phone) {
+                alert(currentLang === 'ru' ? 'У клиента нет номера телефона' : 'Кардардын телефон номери жок');
+                return;
+            }
+            const cleanPhone = client.phone.replace(/[^0-9]/g, '');
+            const storeTitle = currentStoreName ? `«${currentStoreName}»` : `«Карыз Дептер»`;
+            const text = currentLang === 'ru' 
+                ? `Здравствуйте! Напоминание от магазина ${storeTitle}: Ваш долг составляет ${client.amount} сом. Пожалуйста, погасите задолженность.`
+                : `Саламатсызбы! ${storeTitle} дүкөнүнөн эскертүү: Сиздин карызыңыз: ${client.amount} сом. Сураныч, жакынкы убакта төлөп коюуңузду өтүнөбүз.`;
+            
+            window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+        }
+
+        function openEditClientModal() {
+            const client = debtsData.find(d => d.id === selectedClientId);
+            if (!client || client.archivedAt) return;
+            document.getElementById('edit-client-name').value = client.name;
+            document.getElementById('edit-client-phone').value = client.phone;
+            document.getElementById('edit-client-modal').classList.remove('hidden');
+        }
+
+        function closeEditClientModal() {
+            document.getElementById('edit-client-modal').classList.add('hidden');
+        }
+
+        function saveEditedClient() {
+            const client = debtsData.find(d => d.id === selectedClientId);
+            if (!client) return;
+            const name = document.getElementById('edit-client-name').value.trim();
+            if (!name) { alert(currentLang === 'ru' ? 'Введите имя клиента.' : 'Кардардын атын киргизиңиз.'); return; }
+            client.name = name;
+            client.phone = document.getElementById('edit-client-phone').value.trim();
+            saveCurrentDebts();
+            closeEditClientModal();
+            openDetail(selectedClientId);
+            renderDebts();
+            syncClientToCloud(client).catch(error => updateCloudStatus('Локально сохранено; ошибка облака: ' + (error.message || ''), true));
+        }
+
+        // Физическое удаление отключено: старые вызовы deleteClient теперь архивируют клиента.
+        function deleteClient() {
+            archiveClient();
+        }
+
+        window.addEventListener('online', () => {
+            if (currentUser && cloudStoreId) {
+                cloudReady = true;
+                loadCloudDebts().catch(error => updateCloudStatus('Синхронизация не выполнена: ' + (error.message || ''), true));
+            }
+        });
+
+        window.addEventListener('load', () => {
+            initApp();
+            setTimeout(() => {
+                if (!window.matchMedia('(display-mode: standalone)').matches) {
+                    document.getElementById('pwa-banner').classList.remove('hidden');
+                }
+            }, 2000);
+        });
+
+        function exportBackup() {
+            const storage = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('kd_')) storage[key] = localStorage.getItem(key);
+            }
+            const payload = {
+                app: 'Karyz Depter',
+                version: 'v8-cloud-email-test',
+                createdAt: new Date().toISOString(),
+                storage
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'KARYZ_BACKUP_' + new Date().toISOString().slice(0, 10) + '.json';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            alert(currentLang === 'ru' ? 'Резервная копия скачана. Храните её в безопасном месте.' : 'Камдык көчүрмө жүктөлдү. Коопсуз жерде сактаңыз.');
+        }
+
+        async function importBackupFile(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            try {
+                if (file.size > 10 * 1024 * 1024) throw new Error('Файл слишком большой.');
+                const parsed = JSON.parse(await file.text());
+                if (!parsed || typeof parsed !== 'object') throw new Error('Формат резервной копии не распознан.');
+                // Поддерживаем оба формата: v5 (storage) и резервную копию v3-day3 (accounts/debtsByPhone).
+                let incoming;
+                if (parsed.storage && typeof parsed.storage === 'object') {
+                    incoming = parsed.storage;
+                } else if (parsed.app === 'karyz-depter' && parsed.backupVersion === 1 && Array.isArray(parsed.accounts) && parsed.debtsByPhone && typeof parsed.debtsByPhone === 'object') {
+                    incoming = { kd_accounts: JSON.stringify(parsed.accounts) };
+                    for (const [phone, clients] of Object.entries(parsed.debtsByPhone)) {
+                        incoming[debtsStorageKey(phone)] = JSON.stringify(clients);
+                    }
+                    if (parsed.language) incoming.kd_lang = parsed.language;
+                } else {
+                    throw new Error('Формат резервной копии не распознан.');
+                }
+                if (!incoming.kd_accounts) throw new Error('В копии не найден список магазинов.');
+                const importedAccounts = JSON.parse(incoming.kd_accounts);
+                if (!Array.isArray(importedAccounts)) throw new Error('Список магазинов повреждён.');
+
+                const debtEntries = Object.entries(incoming).filter(([k]) => k.startsWith('kd_debts_') || k === 'kd_debts');
+                const parsedDebtEntries = debtEntries.map(([key, value]) => {
+                    const arr = JSON.parse(value || '[]');
+                    if (!Array.isArray(arr)) throw new Error('Повреждён список должников: ' + key);
+                    return { key, arr };
+                });
+
+                const existingAccounts = JSON.parse(localStorage.getItem('kd_accounts') || '[]');
+                if (!Array.isArray(existingAccounts)) throw new Error('Текущий список магазинов повреждён.');
+                const accountMap = new Map(existingAccounts.map(a => [normalizePhone(a.phone), a]));
+                const resolvedAccounts = [];
+                for (const account of importedAccounts) {
+                    if (!account || !account.phone || !account.storeName || !/^\d{4}$/.test(String(account.pin || ''))) {
+                        throw new Error('В резервной копии есть неполная учётная запись. Импорт остановлен.');
+                    }
+                    const canonical = normalizePhone(account.phone);
+                    if (!canonical) throw new Error('В резервной копии найден некорректный номер магазина.');
+                    const old = accountMap.get(canonical);
+                    if (old) {
+                        if (String(old.pin) !== String(account.pin) || String(old.storeName) !== String(account.storeName)) {
+                            throw new Error('Конфликт магазина с номером ' + account.phone + '. Проверьте PIN и название. Ничего не импортировано.');
+                        }
+                        resolvedAccounts.push({ sourcePhone: account.phone, targetPhone: old.phone });
+                    } else {
+                        accountMap.set(canonical, account);
+                        resolvedAccounts.push({ sourcePhone: account.phone, targetPhone: account.phone });
+                    }
+                }
+
+                // Привязываем каждую импортируемую базу к аккаунту по нормализованному телефону.
+                // Это устраняет ошибку 555... против 996555... без потери исходных записей.
+                const incomingByTarget = new Map();
+                for (const mapping of resolvedAccounts) {
+                    const canonical = normalizePhone(mapping.sourcePhone);
+                    const matched = parsedDebtEntries.filter(entry => {
+                        if (entry.key === 'kd_debts') return false;
+                        return samePhone(entry.key.slice('kd_debts_'.length), canonical);
+                    });
+                    const merged = [];
+                    const seen = new Map();
+                    for (const entry of matched) for (const client of entry.arr) {
+                        if (!client || client.id == null || !client.name || !['theymust', 'imust'].includes(client.type)) {
+                            throw new Error('В копии найден некорректный клиент. Импорт остановлен.');
+                        }
+                        const id = String(client.id);
+                        if (seen.has(id) && JSON.stringify(seen.get(id)) !== JSON.stringify(client)) {
+                            throw new Error('В резервной копии конфликтуют записи клиента ' + client.name + '.');
+                        }
+                        seen.set(id, client);
+                    }
+                    merged.push(...seen.values());
+                    incomingByTarget.set(debtsStorageKey(mapping.targetPhone), merged);
+                }
+
+                // Старый общий список (до разделения по магазинам) переносим только если он есть.
+                const legacyEntry = parsedDebtEntries.find(x => x.key === 'kd_debts');
+                if (legacyEntry && legacyEntry.arr.length) {
+                    const target = resolvedAccounts[0];
+                    if (target) {
+                        const key = debtsStorageKey(target.targetPhone);
+                        const prior = incomingByTarget.get(key) || [];
+                        const byId = new Map(prior.map(d => [String(d.id), d]));
+                        for (const d of legacyEntry.arr) if (d && d.id != null && !byId.has(String(d.id))) byId.set(String(d.id), d);
+                        incomingByTarget.set(key, Array.from(byId.values()));
+                    }
+                }
+
+                // Существующие данные объединяем, не перезаписывая конфликтующие записи.
+                const finalDebts = new Map();
+                for (const [key, incomingArr] of incomingByTarget) {
+                    const current = JSON.parse(localStorage.getItem(key) || '[]');
+                    if (!Array.isArray(current)) throw new Error('Текущие данные повреждены: ' + key);
+                    const byId = new Map(current.map(d => [String(d.id), d]));
+                    for (const client of incomingArr) {
+                        const id = String(client.id);
+                        if (byId.has(id) && JSON.stringify(byId.get(id)) !== JSON.stringify(client)) {
+                            throw new Error('Конфликт записи клиента ' + client.name + '. Текущие данные не изменены.');
+                        }
+                        byId.set(id, client);
+                    }
+                    finalDebts.set(key, Array.from(byId.values()));
+                }
+
+                const importedCount = Array.from(incomingByTarget.values()).reduce((n, a) => n + a.length, 0);
+                if (!confirm('Найдено магазинов в копии: ' + importedAccounts.length +
+                    '. Клиентов в найденных базах: ' + importedCount +
+                    '. Существующие данные не будут удалены. Перед импортом будет скачана резервная копия. Продолжить?')) return;
+
+                // Перед записью сохраняем текущую базу; затем записываем только после полной проверки.
+                exportBackup();
+                localStorage.setItem('kd_accounts', JSON.stringify(Array.from(accountMap.values())));
+                for (const [key, arr] of finalDebts) localStorage.setItem(key, JSON.stringify(arr));
+                if (incoming.kd_lang && !localStorage.getItem('kd_lang')) localStorage.setItem('kd_lang', incoming.kd_lang);
+                if (incoming.kd_legacy_migrated) localStorage.setItem('kd_legacy_migrated', incoming.kd_legacy_migrated);
+
+                alert('Импорт завершён. Магазинов в базе: ' + accountMap.size +
+                    '. Клиентов объединено: ' + importedCount +
+                    '. Войдите в магазин с его номером и PIN. Если список не появился, не повторяйте импорт — сообщите об этом.');
+                location.reload();
+            } catch (error) {
+                alert('Импорт не выполнен: ' + (error && error.message ? error.message : 'неизвестная ошибка'));
+            } finally {
+                event.target.value = '';
+            }
+        }
+    </script>
+</body>
+</html>
